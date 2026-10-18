@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Activity, ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -15,26 +15,32 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [callbackError, setCallbackError] = useState(false);
+
+  useEffect(() => {
+    setCallbackError(new URLSearchParams(window.location.search).get("error") === "confirmation");
+  }, []);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const nextPath = new URLSearchParams(window.location.search).get("next") === "editor" ? "/" : "/dashboard";
     setBusy(true); setError(""); setMessage("");
     try {
       const supabase = createClient();
       if (mode === "signin") {
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw error;
-        router.replace("/dashboard");
+        router.replace(nextPath);
         router.refresh();
       } else {
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard` },
+          options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}` },
         });
         if (error) throw error;
         if (data.session) {
-          router.replace("/dashboard");
+          router.replace(nextPath);
           router.refresh();
         } else {
           setMessage("Check your email to confirm your account, then sign in.");
@@ -62,6 +68,7 @@ export default function LoginPage() {
         <div style={{display:"flex",alignItems:"center",gap:9,border:"1px solid #dfe6ef",borderRadius:9,padding:"0 12px",marginBottom:16}}><Mail size={16} color="#8592a6"/><input required type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" style={{width:"100%",border:0,outline:0,padding:"13px 0",fontSize:13}}/></div>
         <label style={{display:"block",fontSize:12,fontWeight:600,marginBottom:7}}>Password</label>
         <div style={{display:"flex",alignItems:"center",gap:9,border:"1px solid #dfe6ef",borderRadius:9,padding:"0 12px",marginBottom:16}}><LockKeyhole size={16} color="#8592a6"/><input required minLength={8} type={showPassword?"text":"password"} autoComplete={mode==="signin"?"current-password":"new-password"} value={password} onChange={e=>setPassword(e.target.value)} placeholder="At least 8 characters" style={{width:"100%",border:0,outline:0,padding:"13px 0",fontSize:13}}/><button type="button" aria-label={showPassword?"Hide password":"Show password"} onClick={()=>setShowPassword(!showPassword)} style={{border:0,background:"transparent",color:"#758198",padding:3}}>{showPassword?<EyeOff size={16}/>:<Eye size={16}/>}</button></div>
+        {callbackError && <p role="alert" style={{fontSize:12,color:"#b42318",background:"#fff0ef",padding:10,borderRadius:8}}>The confirmation link could not be verified. Try signing in again.</p>}
         {error && <p role="alert" style={{fontSize:12,color:"#b42318",background:"#fff0ef",padding:10,borderRadius:8}}>{error}</p>}
         {message && <p role="status" style={{fontSize:12,color:"#176c50",background:"#eaf8f1",padding:10,borderRadius:8}}>{message}</p>}
         <button disabled={busy} type="submit" style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:9,border:0,borderRadius:9,background:"#3768e8",color:"white",padding:14,fontSize:13,fontWeight:700,opacity:busy?.7:1,cursor:busy?"wait":"pointer"}}>{busy?"Please wait…":mode==="signin"?"Sign in":"Create account"} <ArrowRight size={16}/></button>
