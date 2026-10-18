@@ -43,8 +43,27 @@ export default function Home() {
   const validErrors = validateCircuit(circuit);
 
   useEffect(() => {
-    const projectId = new URLSearchParams(window.location.search).get("id");
-    if (!projectId || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) return;
+    const params = new URLSearchParams(window.location.search);
+    const projectId = params.get("id");
+    if (!projectId) {
+      const pending = localStorage.getItem("circuitio:pending-draft");
+      if (pending) {
+        try {
+          const draft = JSON.parse(pending);
+          if (Array.isArray(draft.circuit?.parts) && Array.isArray(draft.circuit?.wires)) {
+            setCircuit(draft.circuit as Circuit);
+            setName(typeof draft.name === "string" ? draft.name : "Untitled circuit");
+            setStatus("Draft restored. Save to cloud to keep it in your account.");
+          }
+        } catch {
+          setStatus("A previous local draft could not be restored.");
+        } finally {
+          localStorage.removeItem("circuitio:pending-draft");
+        }
+      }
+      return;
+    }
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) return;
     let cancelled = false;
     (async () => {
       try {
@@ -110,7 +129,11 @@ export default function Home() {
       const supabase = createClient();
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError) throw authError;
-      if (!user) { window.location.href = "/login"; return; }
+      if (!user) {
+        localStorage.setItem("circuitio:pending-draft", JSON.stringify({ name, circuit }));
+        window.location.href = "/login?next=editor";
+        return;
+      }
       const payload = { name: name.trim() || "Untitled circuit", circuit_json: circuit, updated_at: new Date().toISOString() };
       let savedId = cloudProjectId;
       if (savedId) {
