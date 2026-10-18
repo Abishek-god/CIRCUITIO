@@ -1,33 +1,89 @@
-# CIRCUITIO — Phase 1: Circuit Designer MVP
+# CIRCUITIO
 
-A React/Next.js + TypeScript web application for creating and analysing introductory DC circuits.
+CIRCUITIO is an educational circuit-design and simulation platform built with Next.js, React, TypeScript, and Supabase.
 
-## Phase 1 scope
-- Grid-based schematic canvas
-- Component library: battery, resistor, switch, diode, LED
-- Wire placement and terminal connectivity
-- Component property editing
-- DC simulation for supported linear circuits
-- Voltage, current and power measurements
-- Circuit JSON import/export and schematic SVG export
+## Platform features
 
-## Architecture
-- `app/`: user interface and editor interactions
-- `lib/types.ts`: canonical circuit graph schema
-- `lib/solver.ts`: independent electrical solver (not coupled to the UI)
-- `lib/validation.ts`: circuit validation
+- SVG schematic editor with a component library (ideal DC source, resistor, switch, diode, LED).
+- Editable component labels, values, and rotations; terminal-to-terminal wiring.
+- Separate DC modified-nodal analysis solver for supported linear circuits.
+- Voltage, current, and power readouts, explicit warnings for unsupported models, and ideal open-switch behavior.
+- Circuit JSON import/export and SVG export.
+- Supabase email/password authentication and session refresh.
+- Private cloud projects, project duplication/deletion, and cloud save/load.
+- Opt-in public, read-only circuit sharing.
+- Simulation result history records saved alongside projects.
+- Row Level Security (RLS) on project and simulation tables.
+- Vitest solver tests and GitHub Actions CI.
 
-## Solver contract
-The initial solver supports ideal DC voltage sources, positive-valued resistors and closed switches. Diode and LED symbols are part of the palette, but must not be treated as physically simulated until a nonlinear diode model is integrated. Unsupported elements must generate an explicit warning rather than fabricated readings.
+## Stack
 
-## Development
-Use Node.js 20.9+ and npm. Install dependencies with `npm install`; start with `npm run dev`.
+- Next.js 15, React 19, TypeScript
+- Supabase Auth + PostgreSQL
+- `@supabase/ssr` for browser/server auth clients
+- Vitest
 
-## MVP acceptance criteria
-1. Add, move, select and delete components on a grid canvas.
-2. Connect component terminals with wires and preserve electrical topology independently of canvas coordinates.
-3. Edit component values and validate them.
-4. Run the DC solver on supported circuits and surface clear errors for singular or invalid circuits.
-5. Display component voltage, current and power, with stated sign conventions.
-6. Export/import circuit JSON and export a schematic SVG.
-7. Include automated tests for simple series, parallel, KCL/KVL consistency, floating nodes and invalid component values.
+## Local setup
+
+Requirements: Node.js 20.9+ and npm.
+
+1. Copy `.env.example` to `.env.local`.
+2. Fill in the Supabase project URL and publishable key from **Supabase → Project Settings → API Keys**.
+3. Install and run:
+
+```bash
+npm install
+npm run dev
+```
+
+Open http://localhost:3000.
+
+## Supabase setup
+
+The project migrations live in `supabase/migrations/`. Apply them to your Supabase project in order:
+
+1. `20261018090825_circuitio_phase1_schema.sql`
+2. `20261018091124_public_circuit_sharing.sql`
+3. `20261018091319_grant_public_project_reads.sql`
+
+These migrations create `circuit_projects` and `circuit_simulations`, indexes, a project timestamp trigger, grants, and RLS policies. The public read grant is paired with an RLS policy that only exposes rows whose visibility is explicitly `public`. Do not disable RLS.
+
+In Supabase Authentication settings, configure the site URL and add the local and deployed callback URLs:
+- `http://localhost:3000/auth/callback`
+- `https://YOUR_DEPLOYED_DOMAIN/auth/callback`
+
+For email/password signup, enable email confirmation if desired. New accounts may need to click the confirmation email before they can sign in.
+
+## Routes
+
+- `/` — circuit editor; use **Save to cloud** after signing in.
+- `/login` — sign in or create an account.
+- `/dashboard` — manage saved projects and public-sharing settings.
+- `/share/<project-uuid>` — read-only view of a project marked public.
+- `/auth/callback` — Supabase email confirmation callback.
+
+## Validation
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+The CI workflow runs these checks on pushes and pull requests.
+
+## Solver limitations
+
+The current solver supports positive-valued resistors, ideal independent DC voltage sources, and ideal open/closed switches. Open switches carry zero current; if opening a branch leaves a floating node whose voltage is undefined, the solver reports a singular matrix rather than inventing a voltage. Diode/LED symbols are not yet electrically modelled and remain explicitly unsupported. This is an educational DC operating-point solver, not a full SPICE engine or PCB layout tool.
+
+## Security notes
+
+- Only the Supabase publishable key belongs in `.env.local` and browser code.
+- Never expose a Supabase secret or service-role key to the browser.
+- Private projects are protected by owner-scoped RLS policies.
+- Public sharing is explicit and read-only; switching a project back to private disables anonymous access through the share page.
+- Do not store credentials in GitHub.
+
+## Current status
+
+The schema and public-sharing policy have been applied to the connected Supabase project. Verify typecheck, tests, build, auth email settings, and the deployed URL before treating this branch as production-ready.
