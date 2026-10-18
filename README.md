@@ -7,7 +7,7 @@ CIRCUITIO is an educational circuit-design and simulation platform built with Ne
 - SVG schematic editor with a component library (ideal DC source, resistor, switch, diode, LED).
 - Editable component labels, values, and rotations; terminal-to-terminal wiring.
 - Separate DC modified-nodal analysis solver for supported linear circuits.
-- Voltage, current, and power readouts, plus explicit warnings for unsupported models.
+- Voltage, current, and power readouts, explicit warnings for unsupported models, and ideal open-switch behavior.
 - Circuit JSON import/export and SVG export.
 - Supabase email/password authentication and session refresh.
 - Private cloud projects, project duplication/deletion, and cloud save/load.
@@ -74,7 +74,7 @@ The CI workflow runs these checks on pushes and pull requests.
 
 ## Solver limitations
 
-The current solver supports positive-valued resistors, ideal independent DC voltage sources, and closed switches. Diode/LED symbols are not yet electrically modelled, and open-switch branch behaviour is not yet implemented. The solver intentionally rejects unsupported circuits instead of returning fabricated readings. This is an educational DC operating-point solver, not a full SPICE engine or PCB layout tool.
+The current solver supports positive-valued resistors, ideal independent DC voltage sources, and ideal open/closed switches. Open switches carry zero current; if opening a branch leaves a floating node whose voltage is undefined, the solver reports a singular matrix rather than inventing a voltage. Diode/LED symbols are not yet electrically modelled and remain explicitly unsupported. This is an educational DC operating-point solver, not a full SPICE engine or PCB layout tool.
 
 ## Security notes
 
