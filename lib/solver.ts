@@ -77,7 +77,6 @@ export function solveCircuit(circuit: Circuit): SolveResult {
     union(w.a, w.b);
   }
 
-  const roots = [...new Set([...parent.keys()].map(find))];
   const nodeOf = new Map<string, string>();
   for (const key of parent.keys()) nodeOf.set(key, find(key));
   const nodes = [...new Set([...nodeOf.values()])];
