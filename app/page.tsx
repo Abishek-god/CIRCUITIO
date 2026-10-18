@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { Activity, BatteryCharging, Cable, Download, FilePlus2, Lightbulb, Play, Save, Settings2, Trash2, Zap } from "lucide-react";
 import type { Circuit, Part, PartType, SolveResult } from "@/lib/types";
 import { solveCircuit } from "@/lib/solver";
@@ -35,9 +36,35 @@ export default function Home() {
   const [result, setResult] = useState<SolveResult | null>(null);
   const [status, setStatus] = useState("Ready to design");
   const [name, setName] = useState("Untitled circuit");
+  const [cloudProjectId, setCloudProjectId] = useState<string | null>(null);
+  const [cloudBusy, setCloudBusy] = useState(false);
   const svg = useRef<SVGSVGElement>(null);
   const active = circuit.parts.find(p => p.id === selected) ?? null;
   const validErrors = validateCircuit(circuit);
+
+  useEffect(() => {
+    const projectId = new URLSearchParams(window.location.search).get("id");
+    if (!projectId || !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await createClient().from("circuit_projects")
+          .select("id,name,circuit_json").eq("id", projectId).single();
+        if (error) throw error;
+        if (!data || !Array.isArray(data.circuit_json?.parts) || !Array.isArray(data.circuit_json?.wires)) throw new Error("Saved project has an invalid circuit format.");
+        if (cancelled) return;
+        setCircuit(data.circuit_json as Circuit);
+        setName(data.name);
+        setCloudProjectId(data.id);
+        setSelected(null);
+        setResult(null);
+        setStatus("Cloud project loaded");
+      } catch (e) {
+        if (!cancelled) setStatus(e instanceof Error ? e.message : "Could not load cloud project");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const patchPart = (partId: string, patch: Partial<Part>) => {
     setCircuit(c => ({ ...c, parts: c.parts.map(p => p.id === partId ? { ...p, ...patch } : p) }));
@@ -76,6 +103,40 @@ export default function Home() {
     if (validErrors.length) { setResult({ ok: false, message: "Fix circuit validation errors first.", nodeVoltages: {}, partResults: {}, warnings: validErrors }); return; }
     const r = solveCircuit(circuit); setResult(r); setStatus(r.ok ? "Simulation complete" : "Simulation needs attention");
   };
+  const saveCloud = async () => {
+    setCloudBusy(true);
+    try {
+      if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) throw new Error("Configure Supabase environment variables first.");
+      const supabase = createClient();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+      if (!user) { window.location.href = "/login"; return; }
+      const payload = { name: name.trim() || "Untitled circuit", circuit_json: circuit, updated_at: new Date().toISOString() };
+      let savedId = cloudProjectId;
+      if (savedId) {
+        const { error } = await supabase.from("circuit_projects").update(payload).eq("id", savedId).eq("owner_id", user.id);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.from("circuit_projects").insert({ ...payload, owner_id: user.id, description: "", visibility: "private" }).select("id").single();
+        if (error) throw error;
+        savedId = data.id;
+        setCloudProjectId(savedId);
+        window.history.replaceState(null, "", `/?id=${savedId}`);
+      }
+      if (result) {
+        const { error } = await supabase.from("circuit_simulations").insert({
+          project_id: savedId, owner_id: user.id, status: result.ok ? "success" : "error",
+          results_json: { message: result.message, nodeVoltages: result.nodeVoltages, partResults: result.partResults, warnings: result.warnings }
+        });
+        if (error) throw error;
+      }
+      setStatus(result ? "Cloud project and simulation saved" : "Cloud project saved");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Could not save cloud project");
+    } finally {
+      setCloudBusy(false);
+    }
+  };
   const saveJson = () => {
     const blob = new Blob([JSON.stringify({ name, circuit }, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "circuit"}.json`; a.click(); URL.revokeObjectURL(url); setStatus("Circuit JSON exported");
@@ -111,7 +172,7 @@ export default function Home() {
     <header className="topbar">
       <div className="brand-mark"><Activity size={23}/></div><div className="brand"><strong>CIRCUITIO</strong><small>Visual Circuit Designer · Phase 1</small></div>
       <div className="project"><span className="live-dot"/><input aria-label="Project name" value={name} onChange={e => setName(e.target.value)}/></div>
-      <div className="actions"><label className="btn secondary">Open JSON<input hidden type="file" accept=".json,application/json" onChange={e => loadJson(e.target.files?.[0])}/></label><button className="btn secondary" onClick={saveJson}><Save size={15}/> Save JSON</button><button className="btn secondary" onClick={saveSvg}><Download size={15}/> Export SVG</button></div>
+      <div className="actions"><a className="btn secondary" href="/dashboard">Projects</a><button className="btn secondary" onClick={() => void saveCloud()} disabled={cloudBusy}><Save size={15}/>{cloudBusy ? "Saving…" : "Save to cloud"}</button><label className="btn secondary">Open JSON<input hidden type="file" accept=".json,application/json" onChange={e => loadJson(e.target.files?.[0])}/></label><button className="btn secondary" onClick={saveJson}><Save size={15}/> Save JSON</button><button className="btn secondary" onClick={saveSvg}><Download size={15}/> Export SVG</button></div>
     </header>
     <div className="layout">
       <aside className="panel library">
