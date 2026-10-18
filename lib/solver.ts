@@ -4,12 +4,14 @@ import type { Circuit, Part, SolveResult } from "./types";
  * DC modified-nodal analysis (MNA) solver.
  *
  * Supported: positive-valued resistors, ideal independent DC voltage sources,
- * and closed switches. Wires merge terminals into nodes. Battery terminal 0 is
+ * and ideal switches. Wires merge terminals into nodes. Battery terminal 0 is
  * the positive terminal relative to terminal 1. Current sign for each part is
  * positive from terminal 0 to terminal 1.
  *
- * Diodes/LEDs and open switches are explicitly marked unsupported rather than
- * returning made-up physical measurements.
+ * Open switches are represented as zero-conductance branches. A floating node
+ * created by opening a switch may still make the matrix singular; this is
+ * intentional because its voltage is not uniquely determined. Diodes and LEDs
+ * remain unsupported until a nonlinear model is integrated.
  */
 const term = (p: Part, side: 0 | 1) => `${p.id}:${side}`;
 
@@ -38,21 +40,14 @@ function failure(message: string, warnings: string[] = []): SolveResult {
 
 export function solveCircuit(circuit: Circuit): SolveResult {
   const warnings: string[] = [];
-  const unsupported = circuit.parts.filter(p =>
-    p.type === "diode" || p.type === "led" || (p.type === "switch" && !p.closed)
-  );
   if (circuit.parts.some(p => p.type === "diode" || p.type === "led")) {
     warnings.push("Diode and LED symbols are not simulated yet; their nonlinear models are not part of this DC solver.");
-  }
-  if (circuit.parts.some(p => p.type === "switch" && !p.closed)) {
-    warnings.push("Open-switch branch behaviour is not simulated in this solver version.");
-  }
-  if (unsupported.length) {
-    // Do not silently omit placed components and show misleading circuit-wide results.
-    return failure("This circuit contains unsupported components. Remove or replace them before running this solver.", warnings);
+    return failure("This circuit contains unsupported components. Remove or replace diodes/LEDs before running this solver.", warnings);
   }
 
-  const supported = circuit.parts.filter(p => p.type === "resistor" || p.type === "battery" || (p.type === "switch" && p.closed));
+  const supported = circuit.parts.filter(p =>
+    p.type === "resistor" || p.type === "battery" || p.type === "switch"
+  );
   for (const p of supported) {
     if (p.type === "resistor" && (!Number.isFinite(p.value) || p.value <= 0)) return failure(`${p.label}: resistance must be a positive finite value.`, warnings);
     if (p.type === "battery" && !Number.isFinite(p.value)) return failure(`${p.label}: voltage must be finite.`, warnings);
@@ -122,7 +117,7 @@ export function solveCircuit(circuit: Circuit): SolveResult {
     const voltage = va - vb;
     let current = 0;
     if (p.type === "resistor") current = voltage / p.value;
-    else if (p.type === "switch") current = voltage * 1e9;
+    else if (p.type === "switch" && p.closed) current = voltage * 1e9;
     else if (p.type === "battery") current = x[n + sourcePosition.get(p.id)!];
     partResults[p.id] = { voltage, current, power: voltage * current };
   }
