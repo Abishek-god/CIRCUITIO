@@ -43,8 +43,8 @@ Open http://localhost:3000.
 The project migrations live in `supabase/migrations/`. Apply them to your Supabase project in order:
 
 1. `20261018090825_circuitio_phase1_schema.sql`
-2. `20261018091124_public_circuit_sharing.sql
-3. `20261018091319_grant_public_project_reads.sql``
+2. `20261018091124_public_circuit_sharing.sql`
+3. `20261018091319_grant_public_project_reads.sql`
 
 These migrations create `circuit_projects` and `circuit_simulations`, indexes, a project timestamp trigger, grants, and RLS policies. The public read grant is paired with an RLS policy that only exposes rows whose visibility is explicitly `public`. Do not disable RLS.
 
